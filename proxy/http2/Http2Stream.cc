@@ -291,9 +291,9 @@ Http2Stream::send_request(Http2ConnectionState &cstate)
   }
 
   if (this->recv_end_stream) {
-    this->read_vio.nbytes = bufindex;
-    this->read_vio.ndone  = bufindex;
+    this->read_vio.nbytes = this->read_vio.ndone + dumpoffset;
     if (_outbound_flag) {
+      // TODO(KS): I'm not sure about sending a EOS here
       this->signal_read_event(VC_EVENT_EOS);
     } else {
       this->signal_read_event(VC_EVENT_READ_COMPLETE);
