@@ -2262,6 +2262,10 @@ HttpSM::state_read_server_response_header(int event, void *data)
     if (allow_error == false) {
       SMDebug("http_seq", "Error parsing server response header");
       t_state.current.state = HttpTransact::PARSE_ERROR;
+      // set to 0, because else HttpTransact::retry_server_connection_not_open
+      // will assert on default value
+      // TODO: can we use a better value here?
+      t_state.cause_of_death_errno = 0;
 
       // If the server closed prematurely on us, use the
       //   server setup error routine since it will forward
