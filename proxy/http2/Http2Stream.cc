@@ -565,7 +565,8 @@ Http2Stream::initiating_close()
     if (_sm) {
       // Push out any last IO events
       // First look for active write or read
-      if (write_vio.cont && write_vio.nbytes > 0) {
+      if (write_vio.cont && write_vio.nbytes > 0 &&
+          (!is_outbound_connection() || get_state() == Http2StreamState::HTTP2_STREAM_STATE_OPEN)) {
         SCOPED_MUTEX_LOCK(lock, write_vio.mutex, this_ethread());
         if (write_vio.nbytes > 0 && write_vio.ndone == write_vio.nbytes) {
           write_event   = send_tracked_event(write_event, VC_EVENT_WRITE_COMPLETE, &write_vio);
@@ -581,7 +582,9 @@ Http2Stream::initiating_close()
       }
 
       if (!sent_io_event) {
-        if (write_vio.cont && write_vio.buffer.writer()) {
+        if (write_vio.cont && write_vio.buffer.writer() &&
+            (!is_outbound_connection() || get_state() == Http2StreamState::HTTP2_STREAM_STATE_OPEN ||
+             get_state() == Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_LOCAL)) {
           SCOPED_MUTEX_LOCK(lock, write_vio.mutex, this_ethread());
           Http2StreamDebug("handle write from destroy (event=%d)", VC_EVENT_EOS);
           write_event = send_tracked_event(write_event, VC_EVENT_EOS, &write_vio);
