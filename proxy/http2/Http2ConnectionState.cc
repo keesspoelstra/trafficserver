@@ -2007,11 +2007,19 @@ Http2ConnectionState::send_headers_frame(Http2Stream *stream)
     payload_length = header_blocks_size;
     flags |= HTTP2_FLAGS_HEADERS_END_HEADERS;
     if (stream->is_outbound_connection()) { // Will be sending a request_header
-      int method = send_hdr->method_get_wksidx();
-      if (!(method == HTTP_WKSIDX_POST || method == HTTP_WKSIDX_PUSH || method == HTTP_WKSIDX_PUT) &&
-          !send_hdr->presence(MIME_PRESENCE_TRANSFER_ENCODING) &&
-          ((send_hdr->presence(MIME_PRESENCE_CONTENT_LENGTH) && send_hdr->get_content_length() == 0) ||
-           !send_hdr->presence(MIME_PRESENCE_CONTENT_LENGTH))) {
+      int method                = send_hdr->method_get_wksidx();
+      bool content_method       = method == HTTP_WKSIDX_POST || method == HTTP_WKSIDX_PUSH || method == HTTP_WKSIDX_PUT;
+      bool is_transfer_encoded  = send_hdr->presence(MIME_PRESENCE_TRANSFER_ENCODING);
+      bool has_content_header   = send_hdr->presence(MIME_PRESENCE_CONTENT_LENGTH);
+      bool explicit_zero_length = has_content_header && send_hdr->get_content_length() == 0;
+
+      bool expect_content_stream =
+        is_transfer_encoded ||                                              // transfer encoded content length is unknown
+        (!content_method && has_content_header && !explicit_zero_length) || // non zero content with GET,etc
+        (content_method && !explicit_zero_length);                          // content-length >0 or empty with POST etc
+
+      // send END_STREAM if we don't expect any content
+      if (!expect_content_stream) {
         // TODO deal with the chunked encoding case
         Http2StreamDebug(session, stream->get_id(), "request END_STREAM");
         flags |= HTTP2_FLAGS_HEADERS_END_STREAM;
