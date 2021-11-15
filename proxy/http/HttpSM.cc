@@ -3193,6 +3193,24 @@ HttpSM::tunnel_handler_post(int event, void *data)
   return 0;
 }
 
+void
+HttpSM::setup_tunnel_handler_trailer(HttpTunnelProducer *p)
+{
+  p->read_success               = true;
+  t_state.current.server->state = HttpTransact::TRANSACTION_COMPLETE;
+  t_state.current.server->abort = HttpTransact::DIDNOT_ABORT;
+
+  SMDebug("http", "[%" PRId64 "] wait for that trailing header", sm_id);
+  // Swap out the default hander to set up the new tunnel for the trailer exchange.
+
+  HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::tunnel_handler_trailer);
+  if (ua_txn) {
+    ua_txn->set_expect_send_trailer();
+  }
+  tunnel.local_finish_all(p);
+  SMDebug("http", "[%" PRId64 "] wait for that trailing header", sm_id);
+}
+
 int
 HttpSM::tunnel_handler_trailer(int event, void *data)
 {
@@ -3501,6 +3519,10 @@ HttpSM::tunnel_handler_server(int event, HttpTunnelProducer *p)
         tunnel.append_message_to_producer_buffer(p, reason, reason_len);
         }
       */
+      if (server_txn->expect_receive_trailer()) {
+        setup_tunnel_handler_trailer(p);
+        return 0;
+      }
       tunnel.local_finish_all(p);
     }
     break;
@@ -3527,10 +3549,7 @@ HttpSM::tunnel_handler_server(int event, HttpTunnelProducer *p)
       }
     }
     if (server_txn->expect_receive_trailer()) {
-      SMDebug("http", "[%" PRId64 "] wait for that trailing header", sm_id);
-      // Swap out the default hander to set up the new tunnel for the trailer exchange.
-      HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::tunnel_handler_trailer);
-      tunnel.local_finish_all(p);
+      setup_tunnel_handler_trailer(p);
       return 0;
     }
     break;

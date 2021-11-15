@@ -264,7 +264,18 @@ Http2Stream::send_request(Http2ConnectionState &cstate)
   // Convert header to HTTP/1.1 format
   http2_convert_header_from_2_to_1_1(&_recv_header);
 
-  if (this->expect_send_trailer()) {
+  // WIP: if we signal VC_EVENT_READ_COMPLETE here
+  //      we will shutdown the tunnel causing us
+  //      to assert after this if statement because
+  //      the sm has been shutdown and removed
+  //      ignoring this flow for now and let VC_EOS
+  //      handle this
+  if (false && this->expect_receive_trailer()) {
+    // this did not work:
+    /*if (this->get_sm() && this->get_sm()->get_ua_txn()) {
+      Http2StreamDebug("send_request setting expect_send on ua");
+      this->get_sm()->get_ua_txn()->set_expect_send_trailer();
+    }*/
     // Send read complete to terminate previous data tunnel
     this->read_vio.nbytes = this->read_vio.ndone;
     this->signal_read_event(VC_EVENT_READ_COMPLETE);
@@ -294,7 +305,7 @@ Http2Stream::send_request(Http2ConnectionState &cstate)
     }
   } while (!done);
 
-  if (bufindex == 0) {
+  if (dumpoffset == 0) {
     // No data to signal read event
     return;
   }
@@ -302,11 +313,20 @@ Http2Stream::send_request(Http2ConnectionState &cstate)
   // Is the _sm ready to process the header?
   if (this->read_vio.nbytes > 0) {
     if (this->recv_end_stream) {
-      this->read_vio.nbytes = bufindex;
-      this->read_vio.ndone  = bufindex;
+      this->read_vio.nbytes = this->read_vio.ndone + dumpoffset;
       if (_outbound_flag) {
+        // This is a response trailer
+        // We don't set ndone, because the VC_EVENT_EOS will
+        // first flush the remaining content to consumers,
+        // after which the TUNNEL_EVENT_DONE will be fired
+        // and the trailer handler will be set up
+        // The trailer handler will read the buffer, and not
+        // get its content from the VIO
+        // This is potentially dangerous if the implementation
+        // changes
         this->signal_read_event(VC_EVENT_EOS);
       } else {
+        this->read_vio.ndone = this->read_vio.nbytes;
         this->signal_read_event(VC_EVENT_READ_COMPLETE);
       }
     } else {
