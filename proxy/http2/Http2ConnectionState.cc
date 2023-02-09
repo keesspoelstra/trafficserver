@@ -319,9 +319,17 @@ Http2ConnectionState::rcv_headers_frame(const Http2Frame &frame)
     }
   }
 
-  // Ignoring HEADERS frame on a closed stream.  The HdrHeap has gone away and it will core.
+  // HEADERS frame on a closed stream.  The HdrHeap has gone away and it will core.
   if (stream->get_state() == Http2StreamState::HTTP2_STREAM_STATE_CLOSED) {
-    return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_NONE);
+    Http2StreamDebug(session, stream_id, "Replaced closed stream");
+    free_stream_after_decoding = true;
+    stream = THREAD_ALLOC_INIT(http2StreamAllocator, this_ethread(), session->get_proxy_session(), stream_id,
+                               peer_settings.get(HTTP2_SETTINGS_INITIAL_WINDOW_SIZE), true, false);
+    if (!stream) {
+      // This happening is possibly catastrophic, the HPACK tables can be out of sync
+      // Maybe this is a connection level error?
+      return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_NONE);
+    }
   }
 
   Http2HeadersParameter params;
